@@ -1,0 +1,375 @@
+<html>
+<head>
+    <title>Flipside</title>
+    <link href='http://fonts.googleapis.com/css?family=Open+Sans:300' rel='stylesheet' type='text/css'>
+    <script type="text/javascript" src="d3.min.js"></script>
+    <script type="text/javascript">
+
+    // set coordinate state names
+    var EMPTY = 0,
+        P1 = 1,
+        P2 = 2,
+        R = 1,
+        C = 2;
+
+    var BOARD_SIZE = 8;
+
+    var symbols = [' ', 'O', 'X', '+']
+
+    var game;
+    var currentPlayer = P1;
+
+    var Foo = function Foo() {
+        var bar = 0;
+
+        function getBar() {
+            return bar;
+        }
+
+        function setBar(x) {
+            bar = x;
+        }
+
+        return {
+            'a': getBar,
+            'b': setBar
+        };
+    }
+
+    var Game = function Game(state) {
+        var turns = 0;
+
+        // sets status s for a coordinate
+        function setState(i, j, s) {
+            state[ stateKey(i,j) ] = s;
+        }
+
+        // return the state of a coordinate
+        function getState(i, j) {
+            if (i == undefined) return state;
+
+            return state[ stateKey(i,j) ];
+        }
+
+        function canMove(line, player) {
+            var i = 0;
+            var point = line[i++];
+            if (getState(point[0], point[1]) != EMPTY) {
+                return false;
+            }
+
+            var opponent = (player == P1) ? P2 : P1;
+            var hasSeenOpponent = false;
+            while (i < line.length) {
+                point = line[i++]
+
+                var state = getState(point[0], point[1]);
+                if (state == EMPTY) {
+                    return false;
+                } else if (state == opponent) {
+                    hasSeenOpponent = true;
+                } else if (state == player) {
+                    return hasSeenOpponent;
+                }
+            }
+
+            return false;
+        }
+
+        function canMovePos(i, j, player) {
+            function canLine(line) {
+                return canMove(line, player);
+            }
+
+            var allLines = extendAll(i, j);
+            var possibleLines = allLines.filter(canLine);
+
+            return possibleLines.length > 0;
+        }
+
+        function playPos(i, j, player) {
+            function canLine(line) {
+                return canMove(line, player);
+            }
+
+            var allLines = extendAll(i, j);
+            var possibleLines = allLines.filter(canLine);
+
+            for (var i = 0; i < possibleLines.length; i++) {
+                var line = possibleLines[i];
+                for (var j = 0; j < line.length; j++) {
+                    var point = line[j];
+
+                    if (j > 0 && getState(point[0], point[1]) == player) {
+                        break;
+                    }
+                    setState(point[0], point[1], player);
+                };
+            };
+
+            turns++;
+            printBoard(this, (player == P1) ? P2 : P1);
+        }
+
+        function copy() {
+            var stateCopy = {};
+            for (var key in state) {
+                stateCopy[key] = state[key];
+            }
+            return new Game(stateCopy);
+        }
+
+        if (state == undefined) {
+            state = {};
+            for (var i = 0; i < BOARD_SIZE; i++) {
+                for (var j = 0; j < BOARD_SIZE; j++) {
+                    setState(i, j, EMPTY);
+                };
+            };
+
+            // set the middle pegs
+            var mid = BOARD_SIZE/2;
+
+            setState(mid -1, mid -1, P1);
+            setState(mid,    mid,    P1);
+            setState(mid -1, mid,    P2);
+            setState(mid,    mid -1, P2);
+        }
+
+        return {
+            'state': state,
+            'setState': setState,
+            'getState': getState,
+            'canMovePos': canMovePos,
+            'playPos': playPos,
+            'getTurns': function getTurns() { return turns; },
+            'copy': copy
+        };
+    }
+
+    // returns coordinates as string
+    function stateKey(i, j) {
+        return i + ',' + j;
+    }
+
+    function printBoard(game, player) {
+        var c1 = 0, c2 = 0;
+
+        for (var j = 0; j < BOARD_SIZE; j++) {
+            for (var i = 0; i < BOARD_SIZE; i++) {
+                var state = game.getState(i, j);
+                if (state == P1) c1++;
+                if (state == P2) c2++;
+            }
+        }
+
+
+        var board = "  0 1 2 3 4 5 6 7\n";
+        for (var j = 0; j < BOARD_SIZE; j++) {
+            var line = j + " ";
+            for (var i = 0; i < BOARD_SIZE; i++) {
+                var state = game.getState(i, j);
+                var symbol = (state == EMPTY && player)
+                    ? (game.canMovePos(i, j, player) ? 3 : 0)
+                    : state;
+                line += symbols[symbol] + " ";
+            };
+            if (j == 0) line += "  P1 " + c1;
+            if (j == 1) line += "  P2 " + c2;
+            board += line + "\n";
+        };
+        console.log(board);
+    }
+
+    function next(coord, dir) {
+        var i = coord[0],
+            j = coord[1];
+
+        switch (dir) {
+            case 0: // E
+                return [i + 1, j    ];
+            case 1: // NE
+                return [i + 1, j - 1];
+            case 2: // N
+                return [i,     j - 1];
+            case 3: // NW
+                return [i - 1, j - 1];
+            case 4: // W
+                return [i - 1, j,   ];
+            case 5: // SW
+                return [i - 1, j + 1];
+            case 6: // W
+                return [i,     j + 1];
+            case 7: // SE
+                return [i + 1, j + 1];
+        }
+    }
+
+    function extend(i, j, dir, line) { // line is optional
+        return extend_([i,j], dir, line);
+    }
+
+    function extend_(coord, dir, line) { // line is optional
+        var i = coord[0],
+            j = coord[1];
+
+        line = line || [];
+
+        if (i < 0 || i == BOARD_SIZE || j < 0 || j == BOARD_SIZE) {
+            return line;
+        }
+
+        line.push(coord);
+
+        return extend_(next(coord, dir), dir, line);
+    }
+
+    function extendAll(i, j) {
+        return [0,1,2,3,4,5,6,7].map(function(d) {
+            return extend(i,j,d);
+        });
+    }
+
+    function updateScore(game) {
+        var scores = [0,0];
+        for (var key in game.getState()) {
+            var i = key.split(',')[0] * 1;
+            var j = key.split(',')[1] * 1;
+            var state = game.getState(i, j);
+            if (state != EMPTY) {
+                scores[state-1] += 1;
+            }
+        };
+
+        d3.select('#score .p1-score').text(scores[0]);
+        d3.select('#score .p2-score').text(scores[1]);
+    }
+
+    function displayState(game, updateScores) {
+        var CELL_SIZE = 50,
+            MARGIN = 2;
+
+        var cells = [];
+        for (var key in game.getState()) {
+            var i = key.split(',')[0] * 1;
+            var j = key.split(',')[1] * 1;
+            cells.push({
+                'i': i,
+                'j': j,
+                'state': game.getState(i, j)
+            });
+        };
+        
+        var s = d3.select('#board').selectAll('.cell')
+            .data(cells);
+
+        s.enter()
+            .append('div')
+            .classed('cell', true)
+            .on('mouseover', function (d) {
+                if (!game.canMovePos(d.i, d.j, currentPlayer)) {
+                    displayState(game, false);
+                } else {
+                    console.log('hover on', d.i, d.j);
+                    var tmpGame = game.copy();
+                    tmpGame.playPos(d.i, d.j, currentPlayer);
+                    displayState(tmpGame, false);
+                }
+            })
+            .on('click', function (d) {
+                if (!game.canMovePos(d.i, d.j, currentPlayer)) return;
+                console.log('player', currentPlayer, 'on', d.i, d.j);
+                game.playPos(d.i, d.j, currentPlayer);
+                currentPlayer = (currentPlayer == P1) ? P2 : P1;
+                displayState(game, true);
+            });
+
+        s
+            .classed('p1', function (d) { return d.state == P1 })
+            .classed('p2', function (d) { return d.state == P2 })
+            .classed('move', function( d) { return game.canMovePos(d.i, d.j, currentPlayer) })
+            .style('width', CELL_SIZE)
+            .style('height', CELL_SIZE)
+            .style('left', function (d) { return d.i * (CELL_SIZE + 2*MARGIN) })
+            .style('top', function (d) { return d.j * (CELL_SIZE + 2*MARGIN) });
+
+        if (updateScores) {
+            updateScore(game);
+        }
+    }
+
+    window.onload = function() {
+        game = new Game();
+        displayState(game, true);
+    }
+
+    </script>
+    <style type="text/css">
+        body {
+            font-family: 'Open Sans';
+            font-weight: 300;
+        }
+
+        #game {
+            width: 425px;
+            margin: 0 auto;
+        }
+
+        #score {
+            text-align: center;
+            font-size: 3em;
+        }
+
+        #score div {
+            margin-bottom: 10px;
+            width: 50px;
+            padding: inherit 5px;
+            display: inline-block;
+            border-radius: 10px;
+        }
+
+        #score .p1-score {
+            background-color: #fcf;
+        }
+
+        #score .p2-score {
+            background-color: #cff;
+        }
+
+        #board {
+            position: relative;
+        }
+
+        #board .cell {
+            position: absolute;
+            border: 1px solid #eee;
+            border-radius: 20px;
+        }
+
+        #board .cell.p1 {
+            background-color: #fcf
+        }
+
+        #board .cell.p2 {
+            background-color: #cff
+        }
+
+        #board .cell.move {
+            background-color: #f0f0f0
+        }
+    </style>
+</head>
+<body>
+
+<div>
+    <div id="game">
+        <div id="score">
+            <div class="p1-score">0</div> - <div class="p2-score">0</div>
+        </div>
+        <div id="board">
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
